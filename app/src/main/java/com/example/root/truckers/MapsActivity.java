@@ -2,16 +2,23 @@ package com.example.root.truckers;
 
 import android.graphics.Color;
 import android.os.AsyncTask;
+import android.os.Handler;
+import android.os.SystemClock;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.animation.Interpolator;
+import android.view.animation.LinearInterpolator;
+import android.widget.Toast;
 
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.Projection;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
@@ -34,11 +41,13 @@ import java.util.List;
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
     private GoogleMap mMap;
+    static Polyline line;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+        Toast.makeText(getApplicationContext(),"Route from Meerut to Noida",Toast.LENGTH_LONG).show();
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
@@ -153,12 +162,79 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         @Override
         protected void onPostExecute(String s) {
-            Log.v("Map",s);
-           drawPath(s);
+            Log.v("Map", s);
+        //   drawPath(s);
             mMap.moveCamera(CameraUpdateFactory.zoomBy(10));
-    mMap.moveCamera(CameraUpdateFactory.newLatLng(new LatLng(28.9845,77.7064)));
+    mMap.moveCamera(CameraUpdateFactory.newLatLng(new LatLng(28.9845, 77.7064)));
+
+
+            final JSONObject json;
+            try {
+                json = new JSONObject(s);
+
+
+
+                JSONArray routeArray = json.getJSONArray("routes");
+                JSONObject routes = routeArray.getJSONObject(0);
+                JSONObject overviewPolylines = routes.getJSONObject("overview_polyline");
+                String encodedString = overviewPolylines.getString("points");
+                List<LatLng> list = decodePoly(encodedString);
+                Marker marker = mMap.addMarker(new MarkerOptions()
+                        .position(new LatLng(28.9845, 77.7064))
+                        .draggable(true));
+                line = mMap.addPolyline(new PolylineOptions()
+                                .add(marker.getPosition())
+                                .width(12)
+                                .color(Color.parseColor("#05b1fb"))//Google maps blue color
+                                .geodesic(true)
+                );
+                animateMarker(mMap,marker,list,true);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
 
         }
+    }
+
+    private static void animateMarker(final GoogleMap myMap, final Marker marker, final List<LatLng> directionPoint,
+                                      final boolean hideMarker) {
+        final Handler handler = new Handler();
+        final long start = SystemClock.uptimeMillis();
+        Projection proj = myMap.getProjection();
+        final long duration = 30000;
+        final List<LatLng> covered=new ArrayList<>();
+
+        final Interpolator interpolator = new LinearInterpolator();
+
+        handler.post(new Runnable() {
+            int i = 0;
+
+            @Override
+            public void run() {
+                long elapsed = SystemClock.uptimeMillis() - start;
+                float t = interpolator.getInterpolation((float) elapsed
+                        / duration);
+                if (i < directionPoint.size())
+                    marker.setPosition(directionPoint.get(i));
+                i++;
+
+
+                if (t < 1.0) {
+                    // Post again 16ms later.
+                    handler.postDelayed(this, 14);
+                    covered.add(marker.getPosition());
+                    line.setPoints(covered);
+                    myMap.moveCamera(CameraUpdateFactory.newLatLng(marker.getPosition()));
+                } else {
+                    if (hideMarker) {
+                        marker.setVisible(false);
+                    } else {
+                        marker.setVisible(true);
+                    }
+                }
+            }
+        });
     }
     public void drawPath(String  result) {
 
